@@ -1,0 +1,40 @@
+
+
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hacktide Navigator</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto; margin: 12px; width: 340px; }
+      h3 { margin: 0 0 10px; font-size: 14px; }
+      input { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ddd; outline: none; }
+      .row { display: flex; gap: 10px; margin-top: 10px; }
+      button { flex: 1; padding: 10px; border-radius: 10px; border: 0; cursor: pointer; }
+      #guideBtn { background: #2563eb; color: white; }
+      #clearBtn { background: #111827; color: white; }
+      #status { margin-top: 8px; font-size: 12px; opacity: 0.85; }
+    </style>
+  </head>
+
+  <body>
+    <h3>Smart Guide</h3>
+
+    <input
+      id="query"
+      placeholder='Try: Help me find subscriptions on YouTube'
+      autocomplete="off"
+    />
+
+    <div class="row">
+      <button id="guideBtn">Guide</button>
+      <button id="clearBtn">Clear</button>
+    </div>
+
+    <div id="status">Ready.</div>
+
+    <!-- IMPORTANT: load JS from file (no inline JS) -->
+    <script src="popup.js"></script>
+  </body>
+</html>
