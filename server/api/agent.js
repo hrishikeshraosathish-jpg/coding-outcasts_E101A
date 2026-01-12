@@ -2,30 +2,21 @@ import OpenAI from "openai";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+function setCors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
 
-export default async function handler(request) {
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
-  if (request.method !== "POST") {
-    return Response.json({ ok: false, error: "Use POST" }, { status: 405, headers: corsHeaders });
-  }
+export default async function handler(req, res) {
+  setCors(res);
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return Response.json({ ok: false, error: "Invalid JSON body" }, { status: 400, headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Use POST" });
 
-  const { goal, observation, history } = body || {};
+  const { goal, observation, history } = req.body || {};
   if (!goal || !observation) {
-    return Response.json({ ok: false, error: "Missing goal or observation" }, { status: 400, headers: corsHeaders });
+    return res.status(400).json({ ok: false, error: "Missing goal or observation" });
   }
 
   const schema = {
@@ -90,14 +81,11 @@ export default async function handler(request) {
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return Response.json(
-        { ok: false, error: "Model did not return valid JSON", raw },
-        { status: 200, headers: corsHeaders }
-      );
+      return res.status(200).json({ ok: false, error: "Model did not return valid JSON", raw });
     }
 
-    return Response.json({ ok: true, ...parsed }, { status: 200, headers: corsHeaders });
+    return res.status(200).json({ ok: true, ...parsed });
   } catch (e) {
-    return Response.json({ ok: false, error: String(e?.message || e) }, { status: 500, headers: corsHeaders });
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 }
