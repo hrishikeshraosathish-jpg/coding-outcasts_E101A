@@ -1,3 +1,4 @@
+// Summary: added agent observation/action handlers while preserving guide and flow utilities.
 (() => {
   const GUIDE_ID = "__hacktide_guide_root__";
   const STYLE_ID = "__hacktide_guide_style__";
@@ -180,6 +181,51 @@
       .slice(0, 160);
   }
 
+  function isVisible(el) {
+    if (!(el instanceof HTMLElement)) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (parseFloat(style.opacity || "1") === 0) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 1 && rect.height > 1;
+  }
+
+  function escapeCss(value) {
+    if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(value);
+    return String(value).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+  }
+
+  function cssPath(el) {
+    if (!(el instanceof Element)) return "";
+    if (el.id) return `#${escapeCss(el.id)}`;
+    const parts = [];
+    let node = el;
+    while (node && node.nodeType === 1 && parts.length < 5) {
+      let part = node.tagName.toLowerCase();
+      if (node.id) {
+        part += `#${escapeCss(node.id)}`;
+        parts.unshift(part);
+        break;
+      }
+      const classes = Array.from(node.classList || [])
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((c) => `.${escapeCss(c)}`);
+      if (classes.length) part += classes.join("");
+      const parent = node.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children).filter((child) => child.tagName === node.tagName);
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(node) + 1;
+          part += `:nth-of-type(${index})`;
+        }
+      }
+      parts.unshift(part);
+      node = node.parentElement;
+    }
+    return parts.join(" > ");
+  }
+
   function isClickable(el) {
     const tag = el.tagName.toLowerCase();
     if (tag === "button" || tag === "a") return true;
@@ -196,6 +242,68 @@
     for (const w of q) if (t.includes(w)) s += 3;
     if (t === query.toLowerCase()) s += 6;
     return s;
+  }
+
+  function getObservation(maxElements = 60) {
+    const candidates = Array.from(
+      document.querySelectorAll("a,button,input,textarea,select,[role='button'],[role='link'],[contenteditable='true'],[tabindex]")
+    )
+      .filter((el) => el instanceof HTMLElement)
+      .filter(isVisible);
+
+    const elements = candidates.map((el) => {
+      const rect = el.getBoundingClientRect();
+      const role = el.getAttribute("role") || "";
+      const type = el.getAttribute("type") || "";
+      return {
+        tag: el.tagName.toLowerCase(),
+        text: getText(el),
+        selector: cssPath(el),
+        role,
+        type,
+        ariaLabel: el.getAttribute("aria-label") || "",
+        placeholder: el.getAttribute("placeholder") || "",
+        value: "value" in el ? String(el.value || "") : "",
+        href: el.getAttribute("href") || "",
+        x: Math.round(rect.left + window.scrollX),
+        y: Math.round(rect.top + window.scrollY),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      };
+    });
+
+    elements.sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
+
+    return {
+      url: location.href,
+      title: document.title,
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        scrollX: window.scrollX,
+        scrollY: window.scrollY
+      },
+      elements: elements.slice(0, maxElements)
+    };
+  }
+
+  function resolveElement({ selector, text }) {
+    if (selector) {
+      const el = document.querySelector(selector);
+      if (el instanceof HTMLElement) return el;
+    }
+    const query = String(text || "").trim().toLowerCase();
+    if (!query) return null;
+    const candidates = Array.from(
+      document.querySelectorAll("a,button,input,textarea,select,[role='button'],[role='link'],[contenteditable='true'],[tabindex]")
+    )
+      .filter((el) => el instanceof HTMLElement)
+      .filter(isVisible)
+      .map((el) => ({ el, text: getText(el) }))
+      .filter((item) => item.text);
+
+    candidates.sort((a, b) => score(query, b.text) - score(query, a.text));
+    return candidates[0]?.el || null;
   }
 
   function findBest(query) {
@@ -590,7 +698,66 @@
     }
   }
 
+  async function executeAgentAction(action) {
+    const before = location.href;
+    const safeAction = action || {};
+    let ok = false;
+    let message = "";
+
+    if (safeAction.type === "click") {
+      const el = resolveElement(safeAction);
+      if (!el) return { ok: false, navigated: false, message: "Element not found for click." };
+      await guideTo(el, safeAction.reason || "Agent click", true);
+      ok = true;
+    } else if (safeAction.type === "type") {
+      const el = resolveElement(safeAction);
+      if (!el) return { ok: false, navigated: false, message: "Element not found for typing." };
+      await guideTo(el, safeAction.reason || "Agent type", false);
+      await typeInto(el, safeAction.value || "");
+      if (safeAction.enter) pressEnter(el);
+      ok = true;
+    } else if (safeAction.type === "scroll") {
+      const delta = Number(safeAction.deltaY || 0);
+      window.scrollBy({ top: delta, behavior: "smooth" });
+      await sleep(200);
+      ok = true;
+    } else if (safeAction.type === "wait") {
+      const ms = Number(safeAction.ms || 800);
+      await sleep(ms);
+      ok = true;
+    } else if (safeAction.type === "done") {
+      ok = true;
+      message = "Done.";
+    } else {
+      const ms = Number(safeAction.ms || 800);
+      await sleep(ms);
+      ok = true;
+      message = "Unknown action, waiting.";
+    }
+
+    const navigated = location.href !== before;
+    return { ok, navigated, message };
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "PING") {
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    if (msg?.type === "AGENT_GET_OBSERVATION") {
+      sendResponse({ ok: true, observation: getObservation(60) });
+      return true;
+    }
+
+    if (msg?.type === "AGENT_EXECUTE") {
+      (async () => {
+        const res = await executeAgentAction(msg.action || {});
+        sendResponse({ ok: true, result: res });
+      })();
+      return true;
+    }
+
     if (msg?.type === "CLEAR_GUIDE") {
       clearGuide();
       sendResponse({ ok: true });
