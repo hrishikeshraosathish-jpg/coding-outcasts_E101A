@@ -1,8 +1,11 @@
 {
+  "_comment": "Summary: swapped OpenAI dependency for a local Ollama planner server.",
   "name": "hacktide-backend",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "openai": "^5.0.0"
+  "description": "Local Ollama planner server for Hacktide Navigator agent mode.",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
   }
 }

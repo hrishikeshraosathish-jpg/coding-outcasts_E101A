@@ -1,8 +1,10 @@
 {
+  "_comment": "Summary: added storage support for local agent settings.",
   "manifest_version": 3,
   "name": "Hacktide Navigator",
   "version": "0.1.0",
-  "permissions": ["activeTab", "tabs"],
+  "description": "Local guide and agent navigator using Ollama.",
+  "permissions": ["activeTab", "tabs", "storage"],
   "host_permissions": ["<all_urls>"],
   "action": { "default_popup": "popup.html" },
   "content_scripts": [
